@@ -194,6 +194,25 @@ class HelpCog(commands.Cog):
             inline=False,
         )
         embed.add_field(
+            name="Luật chơi các tương tác:",
+            value=(
+                f"`{self.bot.command_prefix} nsfwrule` – Luật chơi các tương tác.\n"
+            ),
+            inline=False,
+        )
+        # embed.add_field(
+        #     name="Tự sướng:",
+        #     value=(
+        #         f"`{self.bot.command_prefix} solo` – Tự sướng (mông/lồn/cặc).\n"
+        #         f"`{self.bot.command_prefix} blowjob` – Tự blowjob.\n"
+        #         f"`{self.bot.command_prefix} rimjob` – Tự rimjob (liếm lồn).\n"
+        #         f"`{self.bot.command_prefix} handjob` – Tự handjob.\n"
+        #         # f"`!tf footjob` – Tự footjob.\n"
+        #         # f"`!tf finger` – Tự móc lồn.\n"
+        #     ),
+        #     inline=False,
+        # )
+        embed.add_field(
             name="Chịch member khác:",
             value=(
                 f"`{self.bot.command_prefix} bj @user` - Blowjob cho member khác.\n"
@@ -214,6 +233,14 @@ class HelpCog(commands.Cog):
                 f"`{self.bot.command_prefix} ranknsfw r` - Xem bảng xếp hạng tổng người bị sếch.\n"
                 f"`{self.bot.command_prefix} ranknsfw <action>` - Xem bảng xếp hạng quỷ sếch theo tương tác.\n"
                 f"`{self.bot.command_prefix} ranknsfw r <action>` - Xem bảng xếp hạng người bị sếch theo tương tác.\n"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Chỉ dành cho Femboy Queen",
+            value=(
+                f"`{self.bot.command_prefix} locknsfw @user` - Khoá lệnh NSFW cho member khác.\n"
+                f"`{self.bot.command_prefix} unlocknsfw` - Mở khoá lệnh NSFW \n"
             ),
             inline=False,
         )

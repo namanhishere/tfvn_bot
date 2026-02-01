@@ -115,6 +115,35 @@ class NSFWInteractionCog(commands.Cog):
         await ctx.send(embed=embed)
 
     # Commands
+    @commands.command(name="nsfwrule")
+    async def nsfw_rule(self, ctx):
+        if not await self._nsfw_guard(ctx):
+            return
+
+        rule_text = (
+            "🔞 **Quy Định Sử Dụng Lệnh NSFW** 🔞\n"
+            "1. **Kênh NSFW**: Chỉ sử dụng các lệnh NSFW trong các kênh được đánh dấu là NSFW.\n"
+            "2. **Tôn Trọng Thành Viên**: Không ép buộc ai tham gia vào các tương tác NSFW nếu họ không muốn.\n"
+            "3. **Hạn Chế Tuổi**: Đảm bảo rằng tất cả thành viên tham gia đều trên 18 tuổi.\n"
+            "4. **Hành Vi Phù Hợp**: Tránh các hành vi quấy rối, xúc phạm hoặc không phù hợp trong các tương tác NSFW.\n"
+            "5. **Tuân Thủ Quy Định Discord**: Mọi hoạt động phải tuân thủ Điều Khoản Dịch Vụ và Nguyên Tắc Cộng Đồng của Discord.\n"
+            "Việc vi phạm các quy định này có thể dẫn đến việc bị cảnh cáo hoặc cấm sử dụng lệnh NSFW."
+        )
+
+        gameplay_text = (
+            f"🎮 **Cách Chơi Các Lệnh NSFW** 🎮\n"
+            f"1. Sử dụng lệnh với cú pháp: `!{self.bot.command_prefix} <lệnh> @tên_thành_viên`.\n"
+            f"2. Các lệnh bao gồm: `bj` (bú cu), `rj` (liếm lồn), `hj` (sục cho), `frot` (đấu kiếm), `fuck` (chịch), `cream` (xuất trong).\n"
+            f"3. Mỗi lệnh có thời gian hồi (cooldown) là 15 giây để tránh spam.\n"
+            f"4. Femboy Queen có thể khoá lệnh NSFW của người chơi bất kỳ trong vòng 24 giờ.\n"
+            f"5. Femboy King sẽ nhận được hệ số x3 điểm khi sử dụng lệnh NSFW.\n"
+        )
+
+        embed = discord.Embed(title="📜 Quy Định và Hướng Dẫn Sử Dụng Lệnh NSFW", description="", color=discord.Color.red())
+        embed.add_field(name="Quy Định NSFW", value=rule_text, inline=False)
+        embed.add_field(name="Cách Chơi Lệnh NSFW", value=gameplay_text, inline=False)
+        await ctx.send(embed=embed)
+
     @commands.command(name="bj")
     @commands.cooldown(1, 15, commands.BucketType.user)
     async def blowjob(self, ctx, member: discord.Member):
