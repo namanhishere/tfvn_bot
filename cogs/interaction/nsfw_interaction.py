@@ -77,6 +77,34 @@ class NSFWInteractionCog(commands.Cog):
         })
 
         return is_locked is not None
+    
+    def get_remaining_lock_time(self, member_id: int) -> dict | None:
+        lock_record = self.db["nsfw_settings"].find_one({
+            "user_locked": member_id,
+            "lock_until": {"$gte": datetime.utcnow()}
+        })
+
+        return lock_record if lock_record else None
+    
+    def format_relative_time_vn(self, dt: datetime) -> str:
+        """Formats the relative time until the given datetime in Vietnamese style."""
+        now = datetime.utcnow()
+        diff = dt - now
+        if diff.total_seconds() <= 0:
+            return "đã hết"
+        
+        seconds = int(diff.total_seconds())
+        if seconds < 60:
+            return f"trong {seconds} giây"
+        minutes = seconds // 60
+        if minutes < 60:
+            return f"trong {minutes} phút"
+        hours = minutes // 60
+        if hours < 24:
+            return f"trong {hours} giờ"
+        days = hours // 24
+        return f"trong {days} ngày"
+
 
     def record_action(self, action: str, ctx: commands.Context, member: discord.Member, coefficient: int = 1):
         document = {
@@ -130,7 +158,7 @@ class NSFWInteractionCog(commands.Cog):
             return
         
         if (self.check_if_user_is_locked(ctx.author.id)):
-            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này.")
+            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này {self.format_relative_time_vn(self.get_remaining_lock_time(ctx.author.id)['lock_until'])}.")
             return
 
         member_roles = [role.id for role in ctx.author.roles]
@@ -166,7 +194,7 @@ class NSFWInteractionCog(commands.Cog):
             return
 
         if (self.check_if_user_is_locked(ctx.author.id)):
-            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này.")
+            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này {self.format_relative_time_vn(self.get_remaining_lock_time(ctx.author.id)['lock_until'])}.")
             return
 
         member_roles = [role.id for role in ctx.author.roles]
@@ -203,7 +231,7 @@ class NSFWInteractionCog(commands.Cog):
         #     return
 
         if (self.check_if_user_is_locked(ctx.author.id)):
-            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này.")
+            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này {self.format_relative_time_vn(self.get_remaining_lock_time(ctx.author.id)['lock_until'])}.")
             return
 
         member_roles = [role.id for role in ctx.author.roles]
@@ -238,7 +266,7 @@ class NSFWInteractionCog(commands.Cog):
             return
 
         if (self.check_if_user_is_locked(ctx.author.id)):
-            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này.")
+            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này {self.format_relative_time_vn(self.get_remaining_lock_time(ctx.author.id)['lock_until'])}.")
             return
 
         member_roles = [role.id for role in ctx.author.roles]
@@ -274,7 +302,7 @@ class NSFWInteractionCog(commands.Cog):
             return
 
         if (self.check_if_user_is_locked(ctx.author.id)):
-            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này.")
+            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này {self.format_relative_time_vn(self.get_remaining_lock_time(ctx.author.id)['lock_until'])}.")
             return
 
         member_roles = [role.id for role in ctx.author.roles]
@@ -310,7 +338,7 @@ class NSFWInteractionCog(commands.Cog):
             return
 
         if (self.check_if_user_is_locked(ctx.author.id)):
-            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này.")
+            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này {self.format_relative_time_vn(self.get_remaining_lock_time(ctx.author.id)['lock_until'])}.")
             return
 
         member_roles = [role.id for role in ctx.author.roles]

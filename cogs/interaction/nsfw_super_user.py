@@ -71,7 +71,7 @@ class NSFWSuperUser(commands.Cog):
         })
 
         if cooled_down:
-            await ctx.send(f"{ctx.author.mention}, cưng còn đang trong thời gian cooldown nha.")
+            await ctx.send(f"{ctx.author.mention}, cưng còn đang trong thời gian cooldown nha. Cool down còn tới {discord.utils.format_dt(cooled_down['cooldown_at'], style='R')} .")
             return
 
         # check if member is already locked by someone else or themselves
