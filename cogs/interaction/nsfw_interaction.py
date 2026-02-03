@@ -28,7 +28,6 @@ class GifPicker:
         self.recent.append(gif)
         return gif
 
-
 class NSFWInteractionCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -39,60 +38,14 @@ class NSFWInteractionCog(commands.Cog):
         self.fuck_picker = GifPicker(FUCKING_GIFS, history_size=len(FUCKING_GIFS))
         self.cream_picker = GifPicker(CREAMPIE_GIFS, history_size=len(CREAMPIE_GIFS))
         self.db = bot.db
-        self.KING_ROLE_ID = None
-        self.QUEEN_ROLE_ID = None
+        self.KING_ROLE_ID = int(self.bot.global_vars["KING_ROLE_ID"])
+        self.QUEEN_ROLE_ID = int(self.bot.global_vars["QUEEN_ROLE_ID"])
 
-        if (
-            self.bot.global_vars["KING_ROLE_ID"] is None or 
-            self.bot.global_vars["KING_ROLE_ID"] == "" or
-            self.bot.global_vars["QUEEN_ROLE_ID"] is None or
-            self.bot.global_vars["QUEEN_ROLE_ID"] == ""
-        ):
-            raise ValueError("KING_ROLE_ID or QUEEN_ROLE_ID is not set in global variables.")
-        
-        KING_ROLE_ID = self.bot.global_vars["KING_ROLE_ID"]
-        QUEEN_ROLE_ID = self.bot.global_vars["QUEEN_ROLE_ID"]
-        try:
-            self.KING_ROLE_ID = int(KING_ROLE_ID)  # Always convert to int
-            self.QUEEN_ROLE_ID = int(QUEEN_ROLE_ID)  # Always convert to int
-        except ValueError:
-            raise ValueError("KING_ROLE_ID and QUEEN_ROLE_ID must be valid integers representing role IDs.")
-
-    def is_king(self, member_roles: list[int]) -> bool:
-        if self.KING_ROLE_ID in member_roles:
-            return True
-        
-        return False
-    
-    def is_queen(self, member_roles: list[int]) -> bool:
-        if self.QUEEN_ROLE_ID in member_roles:
-            return True
-        
-        return False
-    
-    def check_if_user_is_locked(self, member_id: int) -> bool:
-        is_locked = self.db["nsfw_settings"].find_one({
-            "user_locked": member_id,
-            "lock_until": {"$gte": datetime.utcnow()}
-        })
-
-        return is_locked is not None
-    
-    def get_remaining_lock_time(self, member_id: int) -> dict | None:
-        lock_record = self.db["nsfw_settings"].find_one({
-            "user_locked": member_id,
-            "lock_until": {"$gte": datetime.utcnow()}
-        })
-
-        return lock_record if lock_record else None
-    
     def format_relative_time_vn(self, dt: datetime) -> str:
-        """Formats the relative time until the given datetime in Vietnamese style."""
         now = datetime.utcnow()
         diff = dt - now
         if diff.total_seconds() <= 0:
             return "đã hết"
-        
         seconds = int(diff.total_seconds())
         if seconds < 60:
             return f"trong {seconds} giây"
@@ -105,22 +58,21 @@ class NSFWInteractionCog(commands.Cog):
         days = hours // 24
         return f"trong {days} ngày"
 
+    def check_if_user_is_locked(self, member_id: int) -> bool:
+        return self.db["nsfw_settings"].find_one({
+            "user_locked": member_id,
+            "lock_until": {"$gte": datetime.utcnow()}
+        }) is not None
 
-    def record_action(self, action: str, ctx: commands.Context, member: discord.Member, coefficient: int = 1):
-        document = {
-            "message_id": ctx.message.id,
-            "initMember": ctx.author.id,
-            "targetMember": member.id,
-            "action": action,
-            "coefficient": coefficient,
-            "created_at": datetime.utcnow(),
-        }
-        self.db["interactions"].insert_one(document)
+    def get_remaining_lock_time(self, member_id: int) -> dict | None:
+        return self.db["nsfw_settings"].find_one({
+            "user_locked": member_id,
+            "lock_until": {"$gte": datetime.utcnow()}
+        })
 
     async def _nsfw_guard(self, ctx: commands.Context) -> bool:
         if ctx.channel.is_nsfw():
             return True
-
         await ctx.message.add_reaction("⚠️")
         warn_msg = await ctx.reply("🔞 Dùng lệnh này trong channel NSFW nhé.")
         await asyncio.sleep(5)
@@ -128,239 +80,112 @@ class NSFWInteractionCog(commands.Cog):
         await ctx.message.delete()
         return False
 
-    async def _send_embed(
-        self,
-        ctx: commands.Context,
-        *,
-        title: str,
-        description: str,
-        gif_url: str,
-        footer: str | None = None,
-    ):
-        embed = discord.Embed(
-            title=title,
-            description=description,
-        )
-        embed.set_image(url=gif_url)
-        if footer:
-            embed.set_footer(text=footer)
+    async def _handle_interaction(
+            self,
+            ctx,
+            member,
+            action,
+            title,
+            description,
+            gif_picker,
+            self_allowed=False
+        ):
+        if not await self._nsfw_guard(ctx):
+            return
+        if not self_allowed and member == ctx.author:
+            await ctx.send("Bạn không thể tự tương tác với mình được đâu 😳")
+            return
+        if self.check_if_user_is_locked(ctx.author.id):
+            lock_time = self.get_remaining_lock_time(ctx.author.id)['lock_until']
+            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này {self.format_relative_time_vn(lock_time)}.")
+            return
+        coefficient = 3 if self.KING_ROLE_ID in [r.id for r in ctx.author.roles] else 1
+        self.db["interactions"].insert_one({
+            "message_id": ctx.message.id,
+            "initMember": ctx.author.id,
+            "targetMember": member.id,
+            "action": action,
+            "coefficient": coefficient,
+            "created_at": datetime.utcnow(),
+        })
+        embed = discord.Embed(title=title, description=description)
+        embed.set_image(url=gif_picker.pick())
+        if coefficient > 1:
+            embed.set_footer(text=f"Bị {ctx.author.name} {action} x{coefficient} lần")
         await ctx.send(embed=embed)
 
-    # BLOWJOB
+    # Commands
+    @commands.command(name="nsfwrule")
+    async def nsfw_rule(self, ctx):
+        if not await self._nsfw_guard(ctx):
+            return
+
+        rule_text = (
+            "🔞 **Quy Định Sử Dụng Lệnh NSFW** 🔞\n"
+            "1. **Kênh NSFW**: Chỉ sử dụng các lệnh NSFW trong các kênh được đánh dấu là NSFW.\n"
+            "2. **Tôn Trọng Thành Viên**: Không ép buộc ai tham gia vào các tương tác NSFW nếu họ không muốn.\n"
+            "3. **Hạn Chế Tuổi**: Đảm bảo rằng tất cả thành viên tham gia đều trên 18 tuổi.\n"
+            "4. **Hành Vi Phù Hợp**: Tránh các hành vi quấy rối, xúc phạm hoặc không phù hợp trong các tương tác NSFW.\n"
+            "5. **Tuân Thủ Quy Định Discord**: Mọi hoạt động phải tuân thủ Điều Khoản Dịch Vụ và Nguyên Tắc Cộng Đồng của Discord.\n"
+            "Việc vi phạm các quy định này có thể dẫn đến việc bị cảnh cáo hoặc cấm sử dụng lệnh NSFW."
+        )
+
+        gameplay_text = (
+            f"🎮 **Cách Chơi Các Lệnh NSFW** 🎮\n"
+            f"1. Sử dụng lệnh với cú pháp: `!{self.bot.command_prefix} <lệnh> @tên_thành_viên`.\n"
+            f"2. Các lệnh bao gồm: `bj` (bú cu), `rj` (liếm lồn), `hj` (sục cho), `frot` (đấu kiếm), `fuck` (chịch), `cream` (xuất trong).\n"
+            f"3. Mỗi lệnh có thời gian hồi (cooldown) là 15 giây để tránh spam.\n"
+            f"4. Femboy Queen có thể khoá lệnh NSFW của người chơi bất kỳ trong vòng 24 giờ.\n"
+            f"5. Femboy King sẽ nhận được hệ số x3 điểm khi sử dụng lệnh NSFW.\n"
+        )
+
+        embed = discord.Embed(title="📜 Quy Định và Hướng Dẫn Sử Dụng Lệnh NSFW", description="", color=discord.Color.red())
+        embed.add_field(name="Quy Định NSFW", value=rule_text, inline=False)
+        embed.add_field(name="Cách Chơi Lệnh NSFW", value=gameplay_text, inline=False)
+        await ctx.send(embed=embed)
+
     @commands.command(name="bj")
-    @commands.cooldown(1, 15, commands.BucketType.user)  # 1 use per 15 seconds per user
-    async def blowjob(self, ctx: commands.Context, member: discord.Member):
-        if not await self._nsfw_guard(ctx):
-            return
-        
-        if member == ctx.author:
-            await ctx.send("Bạn không thể tự bú cu mình được đâu 😳")
-            return
-        
-        if (self.check_if_user_is_locked(ctx.author.id)):
-            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này {self.format_relative_time_vn(self.get_remaining_lock_time(ctx.author.id)['lock_until'])}.")
-            return
+    @commands.cooldown(1, 15, commands.BucketType.user)
+    async def blowjob(self, ctx, member: discord.Member):
+        await self._handle_interaction(ctx, member, "bú cu", "👅 Bú bú", f"{ctx.author.mention} bú cu {member.mention} 💖", self.bj_picker)
 
-        member_roles = [role.id for role in ctx.author.roles]
-
-        coefficient = 1
-        if self.is_king(member_roles):
-            coefficient = 3
-
-        self.record_action("bj", ctx, member, coefficient=coefficient)
-
-        await self._send_embed(
-            ctx,
-            title="👅 Bú bú",
-            description=f"{ctx.author.mention} bú cu {member.mention} 💖",
-            gif_url=self.bj_picker.pick(),
-            footer=f"Bị {ctx.author.name} bú x{coefficient} lần" if coefficient > 1 else None
-        )
-
-    @blowjob.error
-    async def blowjob_error(self, ctx: commands.Context, error):
-        if isinstance(error, commands.CommandOnCooldown):
-            await ctx.reply(f"⏳ Lệnh đang trong thời gian hồi, vui lòng chờ {error.retry_after:.1f} giây nữa.")
-
-    # RIMJOB
     @commands.command(name="rj")
-    @commands.cooldown(1, 15, commands.BucketType.user)  # 1 use per 15 seconds per user
-    async def rimjob(self, ctx: commands.Context, member: discord.Member):
-        if not await self._nsfw_guard(ctx):
-            return
-        
-        if member == ctx.author:
-            await ctx.send("Bạn không thể tự liếm lồn mình được đâu 😳")
-            return
+    @commands.cooldown(1, 15, commands.BucketType.user)
+    async def rimjob(self, ctx, member: discord.Member):
+        await self._handle_interaction(ctx, member, "liếm lồn", "🍑 Liếm cái ik~", f"{ctx.author.mention} liếm lồn {member.mention} 👅💦", self.rj_picker)
 
-        if (self.check_if_user_is_locked(ctx.author.id)):
-            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này {self.format_relative_time_vn(self.get_remaining_lock_time(ctx.author.id)['lock_until'])}.")
-            return
-
-        member_roles = [role.id for role in ctx.author.roles]
-
-        coefficient = 1
-        if self.is_king(member_roles):
-            coefficient = 3
-
-        self.record_action("rj", ctx, member, coefficient=coefficient)
-
-        await self._send_embed(
-            ctx,
-            title="🍑 Liếm cái ik~",
-            description=f"{ctx.author.mention} liếm lồn {member.mention} 👅💦",
-            gif_url=self.rj_picker.pick(),
-            footer=f"Bị {ctx.author.name} liếm lồn x{coefficient} lần" if coefficient > 1 else None
-        )
-
-    @rimjob.error
-    async def rimjob_error(self, ctx: commands.Context, error):
-        if isinstance(error, commands.CommandOnCooldown):
-            await ctx.reply(f"⏳ Lệnh đang trong thời gian hồi, vui lòng chờ {error.retry_after:.1f} giây nữa.")
-
-    # HANDJOB
     @commands.command(name="hj")
-    @commands.cooldown(1, 15, commands.BucketType.user)  # 1 use per 15 seconds per user
-    async def handjob(self, ctx: commands.Context, member: discord.Member):
-        if not await self._nsfw_guard(ctx):
-            return
-        
-        # ALLOW self-interaction for handjob but comment for future restriction if needed
-        # if member == ctx.author:
-        #     await ctx.send("Bạn không thể tự sục cặc mình được đâu 😳")
-        #     return
+    @commands.cooldown(1, 15, commands.BucketType.user)
+    async def handjob(self, ctx, member: discord.Member):
+        await self._handle_interaction(ctx, member, "sục cho", "🥰 Sục cho nè~", f"{ctx.author.mention} sục cho {member.mention} 💦", self.hj_picker, self_allowed=True)
 
-        if (self.check_if_user_is_locked(ctx.author.id)):
-            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này {self.format_relative_time_vn(self.get_remaining_lock_time(ctx.author.id)['lock_until'])}.")
-            return
-
-        member_roles = [role.id for role in ctx.author.roles]
-
-        coefficient = 1
-        if self.is_king(member_roles):
-            coefficient = 3
-
-        self.record_action("hj", ctx, member, coefficient=coefficient)
-
-        await self._send_embed(
-            ctx,
-            title="🥰 Sục cho nè~",
-            description=f"{ctx.author.mention} sục cho {member.mention} 💦",
-            gif_url=self.hj_picker.pick(),
-            footer=f"Bị {ctx.author.name} sục x{coefficient} lần" if coefficient > 1 else None
-        )
-    @handjob.error
-    async def handjob_error(self, ctx: commands.Context, error):
-        if isinstance(error, commands.CommandOnCooldown):
-            await ctx.reply(f"⏳ Lệnh đang trong thời gian hồi, vui lòng chờ {error.retry_after:.1f} giây nữa.")
-
-    # FROTTING
     @commands.command(name="frot")
-    @commands.cooldown(1, 15, commands.BucketType.user)  # 1 use per 15 seconds per user
-    async def frotting(self, ctx: commands.Context, member: discord.Member):
-        if not await self._nsfw_guard(ctx):
-            return
+    @commands.cooldown(1, 15, commands.BucketType.user)
+    async def frotting(self, ctx, member: discord.Member):
+        await self._handle_interaction(ctx, member, "đấu kiếm", "🤺 Đấu kiếm nhẹ nhàng nha~", f"{ctx.author.mention} frot với {member.mention} 🌸", self.frot_picker)
 
-        if member == ctx.author:
-            await ctx.send("Bạn không thể tự đấu kiếm với mình được đâu 😳")
-            return
-
-        if (self.check_if_user_is_locked(ctx.author.id)):
-            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này {self.format_relative_time_vn(self.get_remaining_lock_time(ctx.author.id)['lock_until'])}.")
-            return
-
-        member_roles = [role.id for role in ctx.author.roles]
-
-        coefficient = 1
-        if self.is_king(member_roles):
-            coefficient = 3
-
-        self.record_action("frot", ctx, member, coefficient=coefficient)
-
-        await self._send_embed(
-            ctx,
-            title="🤺 Đấu kiếm nhẹ nhàng nha~",
-            description=f"{ctx.author.mention} frot với {member.mention} 🌸",
-            gif_url=self.frot_picker.pick(),
-            footer=f"Bị {ctx.author.name} đấu kiếm x{coefficient} lần" if coefficient > 1 else None
-        )
-
-    @frotting.error
-    async def frotting_error(self, ctx: commands.Context, error):
-        if isinstance(error, commands.CommandOnCooldown):
-            await ctx.reply(f"⏳ Lệnh đang trong thời gian hồi, vui lòng chờ {error.retry_after:.1f} giây nữa.")
-
-    # FUCKING
     @commands.command(name="fuck")
-    @commands.cooldown(1, 15, commands.BucketType.user)  # 1 use per 15 seconds per user
-    async def fucking(self, ctx: commands.Context, member: discord.Member):
-        if not await self._nsfw_guard(ctx):
-            return
+    @commands.cooldown(1, 15, commands.BucketType.user)
+    async def fucking(self, ctx, member: discord.Member):
+        await self._handle_interaction(ctx, member, "chịch", "Lên giường thôi 👉🏻👌🏻💦", f"{ctx.author.mention} chịch {member.mention} 💦", self.fuck_picker)
 
-        if member == ctx.author:
-            await ctx.send("Bạn không thể tự chịch mình được đâu 😳")
-            return
-
-        if (self.check_if_user_is_locked(ctx.author.id)):
-            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này {self.format_relative_time_vn(self.get_remaining_lock_time(ctx.author.id)['lock_until'])}.")
-            return
-
-        member_roles = [role.id for role in ctx.author.roles]
-
-        coefficient = 1
-        if self.is_king(member_roles):
-            coefficient = 3
-            
-        self.record_action("fuck", ctx, member, coefficient=coefficient)
-
-        await self._send_embed(
-            ctx,
-            title="Lên giường thôi 👉🏻👌🏻💦",
-            description=f"{ctx.author.mention} chịch {member.mention} 💦",
-            gif_url=self.fuck_picker.pick(),
-            footer=f"Bị {ctx.author.name} chịch x{coefficient} lần" if coefficient > 1 else None
-        )
-
-    @fucking.error
-    async def fucking_error(self, ctx: commands.Context, error):
-        if isinstance(error, commands.CommandOnCooldown):
-            await ctx.reply(f"⏳ Lệnh đang trong thời gian hồi, vui lòng chờ {error.retry_after:.1f} giây nữa.")
-
-    # CREAMPIE
     @commands.command(name="cream")
-    @commands.cooldown(1, 15, commands.BucketType.user)  # 1 use per 15 seconds per user
-    async def creampie(self, ctx: commands.Context, member: discord.Member):
-        if not await self._nsfw_guard(ctx):
-            return
+    @commands.cooldown(1, 15, commands.BucketType.user)
+    async def creampie(self, ctx, member: discord.Member):
+        await self._handle_interaction(ctx, member, "xuất trong", "💦 Aaaahhh~! Em chịu không nổi nữa rồi...", f"{ctx.author.mention} ra bên trong {member.mention} 💦!", self.cream_picker)
 
-        if member == ctx.author:
-            await ctx.send("Bạn không thể tự xuất trong mình được đâu 😳")
-            return
-
-        if (self.check_if_user_is_locked(ctx.author.id)):
-            await ctx.send(f"{member.mention} hiện đang bị khoá lệnh NSFW, không thể thực hiện tương tác này {self.format_relative_time_vn(self.get_remaining_lock_time(ctx.author.id)['lock_until'])}.")
-            return
-
-        member_roles = [role.id for role in ctx.author.roles]
-
-        coefficient = 1
-        if self.is_king(member_roles):
-            coefficient = 3
-
-        self.record_action("cream", ctx, member, coefficient=coefficient)
-
-        await self._send_embed(
-            ctx,
-            title="💦 Aaaahhh~! Em chịu không nổi nữa rồi...",
-            description=f"{ctx.author.mention} ra bên trong {member.mention} 💦!",
-            gif_url=self.cream_picker.pick(),
-            footer=f"Bị {ctx.author.name} xuất trong x{coefficient} lần" if coefficient > 1 else None
-        )
-
-    @creampie.error
-    async def creampie_error(self, ctx: commands.Context, error):
+    # Generic error handler for all commands
+    async def _cooldown_error(self, ctx, error):
         if isinstance(error, commands.CommandOnCooldown):
             await ctx.reply(f"⏳ Lệnh đang trong thời gian hồi, vui lòng chờ {error.retry_after:.1f} giây nữa.")
+
+    # Assign error handlers
+    blowjob.error = _cooldown_error
+    rimjob.error = _cooldown_error
+    handjob.error = _cooldown_error
+    frotting.error = _cooldown_error
+    fucking.error = _cooldown_error
+    creampie.error = _cooldown_error
 
     @commands.command(name="ranknsfw", aliases=["nsfwrank"])
     async def ranknsfw(
