@@ -7,11 +7,13 @@ from datetime import datetime, timedelta
 class VoteCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.db = bot.db  # Assuming bot.db is your database connection
-        self.check_ended_votes.start()  # Start the background task
+        self.db = bot.db
+        self.pending_votes = {}  # Track active vote tasks by message_id
 
     def cog_unload(self):
-        self.check_ended_votes.cancel()
+        # Cancel all pending tasks on unload
+        for task in self.pending_votes.values():
+            task.cancel()
 
     def parse_time(self, time_str: str) -> int:
         """Parse time string like '1m', '2h', '1d' into seconds."""
@@ -31,16 +33,20 @@ class VoteCog(commands.Cog):
         else:
             raise ValueError("Invalid unit. Use 'm', 'h', or 'd'.")
 
-
-    @tasks.loop(minutes=1)  # Check every minute for ended votes
-    async def check_ended_votes(self):
-        """Background task to process ended votes."""
+    async def schedule_vote_end(self, vote):
+        """Schedule the end of a vote."""
         now = discord.utils.utcnow()
-        ended_votes = list(self.db["votes"].find({"end_time": {"$lte": now}}))
-
-        for vote in ended_votes:
+        end_time = vote["end_time"]
+        if end_time <= now:
             await self._process_vote_results(vote)
-            self.db["votes"].delete_one({"_id": vote["_id"]})  # Remove processed vote
+            self.db["votes"].delete_one({"_id": vote["_id"]})
+            return
+
+        delay = (end_time - now).total_seconds()
+        await asyncio.sleep(delay)
+        await self._process_vote_results(vote)
+        self.db["votes"].delete_one({"_id": vote["_id"]})
+        del self.pending_votes[vote["message_id"]]
 
     async def _process_vote_results(self, vote):
         """Process and send results for a ended vote."""
@@ -73,6 +79,15 @@ class VoteCog(commands.Cog):
                 embed.add_field(name=f"{idx}. {option}", value=str(count), inline=True)
 
         await channel.send(embed=embed)
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        """Re-schedule pending votes on startup."""
+        now = discord.utils.utcnow()
+        pending_votes = list(self.db["votes"].find({"end_time": {"$gt": now}}))
+        for vote in pending_votes:
+            task = asyncio.create_task(self.schedule_vote_end(vote))
+            self.pending_votes[vote["message_id"]] = task
 
     @commands.command(name='vote', help='Starts a vote with the given options.')
     async def vote(self, ctx, vote_type: str = "yesno", *, question: str = None):
@@ -137,17 +152,21 @@ class VoteCog(commands.Cog):
             return
 
         # Store vote in DB
-        self.db["votes"].insert_one({
+        vote_doc = {
             "message_id": vote_msg.id,
             "channel_id": ctx.channel.id,
             "end_time": end_time,
             "vote_type": vote_type,
             "question": question,
             "options": options
-        })
+        }
+        self.db["votes"].insert_one(vote_doc)
+
+        # Schedule the task
+        task = asyncio.create_task(self.schedule_vote_end(vote_doc))
+        self.pending_votes[vote_msg.id] = task
 
         await ctx.send(f"Cuộc bỏ phiếu đã bắt đầu! Kết thúc trong {discord.utils.format_dt(end_time, style='R')}.")
-
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(VoteCog(bot))
