@@ -54,10 +54,27 @@ class VoteCog(commands.Cog):
         if not channel:
             return
 
+        # Edit the start message to indicate the vote has ended
+        try:
+            start_msg = await channel.fetch_message(vote["start_message_id"])
+            await start_msg.edit(content="Cuộc bỏ phiếu đã kết thúc")
+        except (discord.NotFound, discord.Forbidden):
+            pass  # Message deleted or no permission
+
         try:
             vote_msg = await channel.fetch_message(vote["message_id"])
         except discord.NotFound:
             return  # Message deleted
+
+        # # Edit the vote message to indicate it's ended
+        # if vote["vote_type"] == "yesno":
+        #     new_content = f"**{vote['question']}**\nCuộc bỏ phiếu đã kết thúc"
+        # else:
+        #     new_content = f"**{vote['question']}**\nCuộc bỏ phiếu đã kết thúc"
+        # try:
+        #     await vote_msg.edit(content=new_content)
+        # except discord.Forbidden:
+        #     pass  # Bot lacks permission to edit
 
         results = {}
         for reaction in vote_msg.reactions:
@@ -151,9 +168,13 @@ class VoteCog(commands.Cog):
             await ctx.send("Loại bỏ phiếu không hợp lệ. Sử dụng 'yesno' hoặc 'multiple'.")
             return
 
+        # Send the start message and store its ID
+        start_msg = await ctx.send(f"Cuộc bỏ phiếu đã bắt đầu! Kết thúc trong {discord.utils.format_dt(end_time, style='R')}.")
+
         # Store vote in DB
         vote_doc = {
             "message_id": vote_msg.id,
+            "start_message_id": start_msg.id,  # Added for editing
             "channel_id": ctx.channel.id,
             "end_time": end_time,
             "vote_type": vote_type,
@@ -165,8 +186,6 @@ class VoteCog(commands.Cog):
         # Schedule the task
         task = asyncio.create_task(self.schedule_vote_end(vote_doc))
         self.pending_votes[vote_msg.id] = task
-
-        await ctx.send(f"Cuộc bỏ phiếu đã bắt đầu! Kết thúc trong {discord.utils.format_dt(end_time, style='R')}.")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(VoteCog(bot))
