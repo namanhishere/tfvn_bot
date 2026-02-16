@@ -6,8 +6,13 @@ on:
     branches:
       - prod  # Trigger on push to prod branch
       - op/dockered
+      - main
   release:
     types: [published]  # Trigger on release
+
+permissions:
+  packages: write
+  contents: read
 
 jobs:
   build-and-push:
